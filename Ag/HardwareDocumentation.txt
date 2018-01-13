@@ -1,0 +1,3 @@
+Raspberry Pi 3
+NodeMCU 1.0
+Arduino Nano
