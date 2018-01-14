@@ -1,9 +1,8 @@
 #include <DHT.h>
 #include <ESP8266WiFi.h>
 #include <PubSubClient.h>
+#include <SoftwareSerial.h>
 
-
-#define DHTTYPE DHT22
 
 #define OE_PIN D0
 #define MR_PIN D1
@@ -11,6 +10,8 @@
 #define CLOCK_PIN D3
 #define DATA_PIN D2
 #define DIGITAL_IN D5
+#define SERIAL_RX D6
+#define SERIAL_TX D7
 #define NUM_MODULES 1
 
 // Update these with values suitable for your network.
@@ -25,9 +26,12 @@ long lastMsg = 0;
 char msg[50];
 int value = 0;
 
-//DHT dht0(D3, DHTTYPE);
+DHT dht22(DIGITAL_IN, DHT22);
+DHT dht11(DIGITAL_IN, DHT11);
 
 byte currentState[3];
+
+SoftwareSerial softSerial(SERIAL_RX,SERIAL_TX);
 
 void setup() {
   pinMode(BUILTIN_LED, OUTPUT);     // Initialize the BUILTIN_LED pin as an output
@@ -43,17 +47,20 @@ void setup() {
     pinMode(MR_PIN, OUTPUT);
     digitalWrite(OE_PIN, LOW);
     digitalWrite(MR_PIN, HIGH);
-    
+
     pinMode(A0, INPUT);
     pinMode(DIGITAL_IN, INPUT);
 
+    softSerial.begin(9600);
+
     digitalWrite(LATCH_PIN, LOW);
     for(int i = NUM_MODULES; i>=0;i--){
-        shiftOut(DATA_PIN, CLOCK_PIN, LSBFIRST, 0); 
+        shiftOut(DATA_PIN, CLOCK_PIN, LSBFIRST, 0);
         }
     digitalWrite(LATCH_PIN, HIGH);
 
-    //dht0.begin();
+    dht22.begin();
+    dht11.begin();
 }
 
 void setup_wifi() {
@@ -80,11 +87,11 @@ void setup_wifi() {
 void callback(char* topic, byte* payload, unsigned int length) {
   String topicString = topic;
   if(topicString.substring(0,sizeof(deviceUID)) == deviceUID){
-    if(topicString.substring(sizeof(deviceUID)) == "/update"){   
+    if(topicString.substring(sizeof(deviceUID)) == "/update"){
       if(length == NUM_MODULES){
         digitalWrite(LATCH_PIN, LOW);
         for(int i = length; i>=0;i--){
-        shiftOut(DATA_PIN, CLOCK_PIN, MSBFIRST, payload[i]); 
+        shiftOut(DATA_PIN, CLOCK_PIN, MSBFIRST, payload[i]);
         }
         digitalWrite(LATCH_PIN, HIGH);
       }
@@ -113,7 +120,33 @@ void callback(char* topic, byte* payload, unsigned int length) {
       value+=digitalRead(DIGITAL_IN);
       client.publish(topicToPub.c_str(),value.c_str());
     }
-    
+    else if(topicString.substring(sizeof(deviceUID)) == "/readDHT22"){
+      String topicToPub = deviceUID;
+      topicToPub+="/DHT22Temp";
+      String value = "";
+      value+= dht22.readTemperature();
+      client.publish(topicToPub.c_str(),value.c_str());
+      String topicToPub = deviceUID;
+      topicToPub+="/DHT22Humidity";
+      String value = "";
+      value+= dht22.readHumidity();
+      client.publish(topicToPub.c_str(),value.c_str());
+    }
+    else if(topicString.substring(sizeof(deviceUID)) == "/readDHT11"){
+      String topicToPub = deviceUID;
+      topicToPub+="/DHT11Temp";
+      String value = "";
+      value+= dht11.readTemperature();
+      client.publish(topicToPub.c_str(),value.c_str());
+      String topicToPub = deviceUID;
+      topicToPub+="/DHT11Humidity";
+      String value = "";
+      value+= dht11.readHumidity();
+      client.publish(topicToPub.c_str(),value.c_str());
+    }
+    else if(topicString.substring(sizeof(deviceUID)) == "/setDimmer"){
+      softSerial.write(payload[0]);
+    }
     //Put in commands to read DHT sensor, send serial to dimmer, etc.
 
   }
@@ -139,7 +172,7 @@ void reconnect() {
       Serial.println(" try again in 5 seconds");
       // Wait 5 seconds before retrying
       delay(5000);
-      
+
     }
   }
 }
